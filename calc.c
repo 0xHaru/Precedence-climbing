@@ -6,45 +6,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define ALLOC(a, type) (type *) Arena_alloc(a, sizeof(type), _Alignof(type))
-
-typedef struct {
-    int capacity;
-    int offset;
-    void *memory;
-} Arena;
-
-static Arena *
-Arena_new(int capacity)
-{
-    void *memory = malloc(sizeof(Arena) + capacity);
-    Arena *a = (Arena *) memory;
-    if (a != NULL) {
-        a->capacity = capacity;
-        a->offset = sizeof(Arena);
-        a->memory = memory;
-    }
-    return a;
-}
-
-static void
-Arena_free(Arena *a)
-{
-    free(a->memory);
-}
-
-static void *
-Arena_alloc(Arena *a, int size, int align)
-{
-    int avail = a->capacity - a->offset;
-    int padding = -a->offset & (align - 1);
-    if (size > avail - padding)
-        return NULL;
-    void *p = (unsigned char *) a->memory + a->offset + padding;
-    a->offset += padding + size;
-    return memset(p, 0, size);
-}
-
 typedef enum {
     TK_INT,
     TK_PLUS,
@@ -87,6 +48,37 @@ struct Node {
     Node *right;
     double val;
 };
+
+typedef struct {
+    int size;
+    int used;
+    Node list[];  // Flexible array member
+} NodePool;
+
+static NodePool *
+NodePool_new(int size)
+{
+    NodePool *pool = malloc(sizeof(NodePool) + size * sizeof(Node));
+    if (pool != NULL) {
+        pool->size = size;
+        pool->used = 0;
+    }
+    return pool;
+}
+
+static void
+NodePool_free(NodePool *pool)
+{
+    free(pool);
+}
+
+static Node *
+NodePool_alloc(NodePool *pool)
+{
+    if (pool->size == pool->used)
+        return NULL;
+    return pool->list + pool->used++;
+}
 
 static bool next_token(Scanner *s);
 
@@ -290,10 +282,10 @@ get_node_type(Token tok)
     }
 }
 
-static Node *parse_expr(Scanner *s, int prec, Arena *a);
+static Node *parse_expr(Scanner *s, int prec, NodePool *pool);
 
 static Node *
-parse_primary(Scanner *s, Arena *a)
+parse_primary(Scanner *s, NodePool *pool)
 {
     Token cur = s->tok;
 
@@ -302,7 +294,7 @@ parse_primary(Scanner *s, Arena *a)
         if (!next_token(s))
             return NULL;
 
-        Node *node = ALLOC(a, Node);
+        Node *node = NodePool_alloc(pool);
         if (node == NULL)
             return NULL;
 
@@ -317,8 +309,8 @@ parse_primary(Scanner *s, Arena *a)
             return NULL;
 
         // Exponentiation takes precedence over negation
-        Node *left = parse_expr(s, 3, a);
-        Node *node = ALLOC(a, Node);
+        Node *left = parse_expr(s, 3, pool);
+        Node *node = NodePool_alloc(pool);
         if (left == NULL || node == NULL)
             return NULL;
 
@@ -335,7 +327,7 @@ parse_primary(Scanner *s, Arena *a)
         if (!next_token(s))
             return NULL;
 
-        Node *expr = parse_expr(s, 0, a);
+        Node *expr = parse_expr(s, 0, pool);
         if (expr == NULL || s->tok.type != TK_RPAREN)
             return NULL;
 
@@ -351,9 +343,9 @@ parse_primary(Scanner *s, Arena *a)
 }
 
 static Node *
-parse_expr(Scanner *s, int min_prec, Arena *a)
+parse_expr(Scanner *s, int min_prec, NodePool *pool)
 {
-    Node *lhs = parse_primary(s, a);
+    Node *lhs = parse_primary(s, pool);
     if (lhs == NULL)
         return NULL;
 
@@ -372,11 +364,11 @@ parse_expr(Scanner *s, int min_prec, Arena *a)
         if (!next_token(s))
             return NULL;
 
-        Node *rhs = parse_expr(s, new_prec, a);
+        Node *rhs = parse_expr(s, new_prec, pool);
         if (rhs == NULL)
             return NULL;
 
-        Node *op_node = ALLOC(a, Node);
+        Node *op_node = NodePool_alloc(pool);
         if (op_node == NULL)
             return NULL;
 
@@ -390,7 +382,7 @@ parse_expr(Scanner *s, int min_prec, Arena *a)
 }
 
 static Node *
-parse(const char *src, int len, Arena *a)
+parse(const char *src, int len, NodePool *pool)
 {
     Scanner s;
     init_scanner(&s, src, len);
@@ -398,7 +390,7 @@ parse(const char *src, int len, Arena *a)
     if (!next_token(&s))
         return NULL;
 
-    return parse_expr(&s, 0, a);
+    return parse_expr(&s, 0, pool);
 }
 
 static double
@@ -511,23 +503,23 @@ main(void)
 {
     const char *src = "-2 ^ 2";
 
-    Arena *a = Arena_new(2048);
-    if (a == NULL) {
-        printf("Failed to allocate arena\n");
+    NodePool *pool = NodePool_new(64);
+    if (pool == NULL) {
+        printf("Failed to allocate pool\n");
         return 1;
     }
 
-    Node *root = parse(src, strlen(src), a);
+    Node *root = parse(src, strlen(src), pool);
     if (root == NULL) {
         printf("Parsing failed\n");
-        Arena_free(a);
+        NodePool_free(pool);
         return 1;
     }
 
     print_tree(stdout, root);
     printf(" = %.2lf\n", eval(root));
 
-    Arena_free(a);
+    NodePool_free(pool);
     return 0;
 }
 #elif defined(FUZZ)
@@ -536,18 +528,18 @@ main(void)
 int
 LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size)
 {
-    Arena *a = Arena_new(8192);
-    if (a == NULL)
+    NodePool *pool = NodePool_new(256);
+    if (pool == NULL)
         return 1;
 
-    Node *root = parse(Data, Size, a);
+    Node *root = parse(Data, Size, pool);
     if (root == NULL) {
         printf("Parsing failed\n");
-        Arena_free(a);
+        NodePool_free(pool);
         return 1;
     }
 
-    Arena_free(a);
+    NodePool_free(pool);
     return 0;
 }
 
@@ -563,23 +555,23 @@ main(void)
         char buf[1024];
         fgets(buf, sizeof(buf), stdin);
 
-        Arena *a = Arena_new(2048);
-        if (a == NULL) {
-            printf("Failed to allocate arena\n");
+        NodePool *pool = NodePool_new(64);
+        if (pool == NULL) {
+            printf("Failed to allocate pool\n");
             continue;
         }
 
-        Node *root = parse(buf, strlen(buf), a);
+        Node *root = parse(buf, strlen(buf), pool);
         if (root == NULL) {
             printf("Parsing failed\n");
-            Arena_free(a);
+            NodePool_free(pool);
             continue;
         }
 
         print_tree(stdout, root);
         printf(" = %.2lf\n", eval(root));
 
-        Arena_free(a);
+        NodePool_free(pool);
     }
 
     return -1;  // Unreachable
