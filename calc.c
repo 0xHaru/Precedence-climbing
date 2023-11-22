@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <ctype.h>
 #include <limits.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,7 +18,7 @@ typedef struct {
 static Arena *
 Arena_new(int capacity)
 {
-    assert(capacity >= sizeof(Arena));
+    assert(capacity >= (int) sizeof(Arena));
 
     void *memory = malloc(capacity);
     Arena *a = (Arena *) memory;
@@ -131,12 +132,12 @@ consume_number(Scanner *s)
     assert(!is_at_end(s) && isdigit(peek(s)));
 
     int num = 0;
-    while (!is_at_end(s) && isdigit(peek(s))) {
+    do {
         int digit = advance(s) - '0';
         if (num > (INT_MAX - digit) / 10)
             return false;
         num = num * 10 + digit;
-    }
+    } while (!is_at_end(s) && isdigit(peek(s)));
 
     s->tok.type = TK_INT;
     s->tok.val = num;
@@ -417,20 +418,8 @@ eval(Node *node)
         return eval(node->left) * eval(node->right);
     case ND_DIV:
         return eval(node->left) / eval(node->right);
-    case ND_EXP: {
-        double res = 1.0;
-        double base = eval(node->left);
-        double exp = eval(node->right);
-        if (exp >= 0) {
-            for (int i = 0; i < exp; i++)
-                res *= base;
-        } else {
-            for (int i = 0; i < -exp; i++)
-                res *= base;
-            res = 1 / res;
-        }
-        return res;
-    }
+    case ND_EXP:
+        return pow(eval(node->left), eval(node->right));
     case ND_POS:
         return +eval(node->left);
     case ND_NEG:
