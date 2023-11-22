@@ -9,20 +9,22 @@
 #define ALLOC(a, type) (type *) Arena_alloc(a, sizeof(type), _Alignof(type))
 
 typedef struct {
-    int capacity;
-    int offset;
     void *memory;
+    int offset;
+    int capacity;
 } Arena;
 
 static Arena *
 Arena_new(int capacity)
 {
-    void *memory = malloc(sizeof(Arena) + capacity);
+    assert(capacity >= sizeof(Arena));
+
+    void *memory = malloc(capacity);
     Arena *a = (Arena *) memory;
     if (a != NULL) {
-        a->capacity = capacity;
-        a->offset = sizeof(Arena);
         a->memory = memory;
+        a->offset = sizeof(Arena);
+        a->capacity = capacity;
     }
     return a;
 }
