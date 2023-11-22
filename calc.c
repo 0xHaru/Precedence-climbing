@@ -50,18 +50,18 @@ struct Node {
 };
 
 typedef struct {
-    int size;
-    int used;
-    Node list[];  // Flexible array member
+    int capacity;
+    int offset;
+    Node memory[];  // Flexible array member
 } NodePool;
 
 static NodePool *
-NodePool_new(int size)
+NodePool_new(int capacity)
 {
-    NodePool *pool = malloc(sizeof(NodePool) + size * sizeof(Node));
+    NodePool *pool = malloc(sizeof(NodePool) + capacity * sizeof(Node));
     if (pool != NULL) {
-        pool->size = size;
-        pool->used = 0;
+        pool->capacity = capacity;
+        pool->offset = 0;
     }
     return pool;
 }
@@ -75,9 +75,9 @@ NodePool_free(NodePool *pool)
 static Node *
 NodePool_alloc(NodePool *pool)
 {
-    if (pool->size == pool->used)
+    if (pool->capacity == pool->offset)
         return NULL;
-    return pool->list + pool->used++;
+    return pool->memory + pool->offset++;
 }
 
 static bool next_token(Scanner *s);
