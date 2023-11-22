@@ -33,7 +33,7 @@ Arena_new(int capacity)
 static void
 Arena_free(Arena *a)
 {
-    free(a->memory);
+    free(a);
 }
 
 static void *
