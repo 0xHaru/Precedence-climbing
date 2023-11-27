@@ -547,30 +547,29 @@ LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size)
 int
 main(void)
 {
+    Arena *a = Arena_new(2048);
+    if (a == NULL) {
+        printf("Failed to allocate arena\n");
+        return -1;
+    }
+
     while (true) {
         printf("> ");
         fflush(stdout);
 
         char buf[1024];
-        fgets(buf, sizeof(buf), stdin);
+        if (fgets(buf, sizeof(buf), stdin) == NULL)
+            return 0;
 
-        Arena *a = Arena_new(2048);
-        if (a == NULL) {
-            printf("Failed to allocate arena\n");
-            continue;
-        }
-
-        Node *root = parse(buf, strlen(buf), a);
+        Arena scratch = *a;
+        Node *root = parse(buf, strlen(buf), &scratch);
         if (root == NULL) {
             printf("Parsing failed\n");
-            Arena_free(a);
             continue;
         }
 
         print_tree(stdout, root);
         printf(" = %.2lf\n", eval(root));
-
-        Arena_free(a);
     }
 
     return -1;  // Unreachable
