@@ -81,8 +81,6 @@ NodePool_alloc(NodePool *pool)
     return pool->memory + pool->offset++;
 }
 
-static bool next_token(Scanner *s);
-
 static void
 init_scanner(Scanner *s, const char *src, int len)
 {
@@ -542,7 +540,8 @@ main(void)
         fflush(stdout);
 
         char buf[1024];
-        fgets(buf, sizeof(buf), stdin);
+        if (fgets(buf, sizeof(buf), stdin) == NULL)
+            return 0;
 
         NodePool *pool = NodePool_new(64);
         if (pool == NULL) {
