@@ -91,8 +91,6 @@ struct Node {
     double val;
 };
 
-static bool next_token(Scanner *s);
-
 static void
 init_scanner(Scanner *s, const char *src, int len)
 {
